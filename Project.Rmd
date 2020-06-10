@@ -1,0 +1,129 @@
+### Data Collection:
+
+
+readData <- function(file) {
+    df <- read.csv(file,
+                   header=TRUE, 
+                   na.strings=c("NA", "", "#DIV/0!"), 
+                   sep=",")
+    }
+```
+
+Then the data is read using the read **readData** function:
+
+```{r}
+data <- readData("./data/training.csv") #read data
+```
+
+### Data Cleaning:
+
+Then the function **cleanData** will be used to clean data. This function turns the variable **new_window** from "yes" or "no" into "1" or "0" respectively. It converts the variable **cvtd_timestamp** into a time object and splits it into **year, month, weekday, hour** and **minute** variables.
+
+Then all the columns with the most "NA" are droped from the dataframe. Columns **X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp** are also droped.
+
+```{r}
+cleanData <- function(df) {    
+    df$new_window <- ifelse(df$new_window=="yes", "1", "0") #convert new_window into "0" or "1"
+    df$cvtd_timestamp <- strptime(df$cvtd_timestamp, "%d/%m/%Y %H:%M") #convert cvtd_timestamp into a time object
+    df$year <- as.numeric(strftime(df$cvtd_timestamp, "%Y")) #creat a new feature year
+    df$month <- as.numeric(strftime(df$cvtd_timestamp, "%m")) #creat a new feature month
+    df$weekday <- as.numeric(strftime(df$cvtd_timestamp, "%d")) #creat a new feature weekday
+    df$hour <- as.numeric(strftime(df$cvtd_timestamp, "%H")) #creat a new feature hour
+    df$minute <- as.numeric(strftime(df$cvtd_timestamp, "%M")) #creat a new feature minute
+    df <- df[,colSums(is.na(df)) < 1] #drop columns with the most "NA"
+    df <- subset(df, select=-c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp)) #drop noisy features 
+    }
+```
+
+Then the data is cleaned using the **cleanData** function:
+
+```{r}
+data <- cleanData(data) #clean data
+```
+
+### Data Exploration:
+
+I used the **featurePlot** function to visualize the data. Here is an example of feature plots for the **first 10** features in the data set:
+
+```{r, warning=FALSE, message=FALSE}
+library(caret)
+featurePlot(x=data[,1:10],
+            y=data$classe,
+            plot="density",
+            scales=list(x=list(relation="free"),
+                        y=list(relation="free")),
+            adjust=1.5,
+            pch="|",
+            layout=c(5,2),
+            auto.key=list(columns=3))
+```
+
+### Training:
+
+The function **createDataPartition** can be used to create a stratified random sample of the data into **training** and **validation** sets with **70%** of the data in the **training** set and the rest in the **validation** set:
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(1)
+inTrain <- createDataPartition(y=data$classe, p=0.7, list=FALSE)
+training <- data[inTrain,] #create training set
+testing <- data[-inTrain,] #create validation set
+```
+
+The model is fitted using **train** from the **caret** library with the following parameters:
+
+* **method** : argument specifies the type of training model.
+
+* **tuneGrid** : a data frame with columns for each tuning parameter.
+
+* **trControl** :  used to specifiy the type of resampling.
+
+    * **method** : the resampling method to be used.
+
+    * **number** : number of cross-validation groups. This may also be an explicit list of integers that define the cross-validation groups.
+
+```{r train_model, warning=FALSE, message=FALSE}
+#creat a tune grid.
+grid <-  expand.grid(cp=c(1:10)*0.01)
+
+#fit the classification model
+fit <- train(classe ~ ., data=training,
+             method="rpart",
+             tuneGrid=grid,
+             trControl=trainControl(method="cv", number=10))
+```
+
+### Cross-Validation:
+
+The training set ids **resampled** in the trainig step above using **Cross-Validated (10 fold)**. The cross-validation results are given below:
+
+From this model, I expect **Out of Sample Error** to be approximately **0.3** from the information below:
+
+```{r}
+fit
+plot(fit)
+```
+
+This is a visualisation for the "classification" tree produced by the model:
+
+```{r, warning=FALSE, message=FALSE, fig.width=10, fig.height=5}
+library(rattle)
+fancyRpartPlot(fit$finalModel)
+```
+
+### Predicting:
+
+Using the model developed, I predict using the variable **classe**
+
+```{r}
+testPred <- predict(fit, testing)
+```
+
+From the **Confusion Matrix** we can calculate our **Out of Sample Error** as **24.84%**:
+
+    Out of Sample Error = 1 - 0.7516
+                        = 0.2484
+
+```{r}
+confusionMatrix(testPred, testing$classe)
+```
+
